@@ -4,6 +4,8 @@ from logindb import login, generate_ticket, shuffleresponse, respondcli, get_inp
 # Uncomment these lines if running for the first time
 # nltk.download('punkt')
 # nltk.download('averaged_perceptron_tagger')
+# nltk.download('punkt_tab')
+# nltk.download('averaged_perceptron_tagger_eng')
 
 close = False
 # Detailed keyword arrays
