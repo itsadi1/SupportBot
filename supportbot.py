@@ -1,8 +1,6 @@
 import nltk
-from random import randint
 import supportbotdb as db
-from logindb import login
-
+from logindb import login, generate_ticket, shuffleresponse, respondcli, get_inputcli
 # Uncomment these lines if running for the first time
 # nltk.download('punkt')
 # nltk.download('averaged_perceptron_tagger')
@@ -64,23 +62,14 @@ FAQ_ANSWERS = {
     "service center": "Sorry, we don't have a service center. We provide online support.",
 }
 
-def respond(text):
-    print(f"SupportBot: {text}")
-
-def get_input():
-    return input("You: ")
-
-def generate_ticket():
-    ticket = randint(1000,9999)
-    if ticket not in db.tklist(Id):
-        return ticket
-    else:
-        return generate_ticket()
+def closed():
+    return close
 
 def contains_any(phrase, keywords):
     return any(k in phrase for k in keywords)
 
-def process_nltk(data):
+def process_nltk(data, respond, get_input, plan, Id):
+    
     global close
     data_lower = data.lower()
     tokens = nltk.word_tokenize(data_lower)
@@ -96,12 +85,18 @@ def process_nltk(data):
             "Hi there! How can I help?",
             "Hey! What can I do for you?"
         ]
-        respond(responses[randint(0, 2)])
+        respond(shuffleresponse(responses))
         return
 
     # 2. Farewell
     if contains_any(data_lower, KEYWORDS["farewell"]):
-        respond("Thank you for contacting customer care. Have a great day!")
+        responses = [
+            "Goodbye! If you need anything else, feel free to ask.",
+            "Thanks for reaching out! Have a great day!",
+            "See you later! Don't hesitate to contact us again."
+        ]
+        respond(shuffleresponse(responses))
+        db.logout(Id)
         close = True
         return
 
@@ -118,10 +113,14 @@ def process_nltk(data):
             if Plan != 'premium':
                 respond("Sure, I can help you upgrade your plan. Please specify the plan you'd like to upgrade to.")
                 plan = get_input().strip().lower()
-                if plan.lower() not in ["basic", "standard", "premium"]:
+                if plan.lower() not in ["standard", "premium"]:
                     respond("Invalid plan. Request cannot be processed.")
                 else:
-                    db.upgrade(Id, plan)
+                    if (Plan == "basic" and plan in ["premium", "standard"]) or (Plan== "standard" and plan in ["premium",]):
+                        db.upgrade(Id, plan)
+                        respond(f"Your current plan is now {plan.title()}.")
+                    else:
+                        respond("You must upgrade to a plan higher than your current plan.")
             else:
                 respond("You are already on the highest plan (Premium).")
         elif "downgrade" in data_lower:
@@ -133,6 +132,7 @@ def process_nltk(data):
                 else:
                     if (Plan == "premium" and plan in ["basic", "standard"]) or (Plan== "standard" and plan in ["basic",]):
                         db.downgrade(Id, plan)
+                        respond(f"Your current plan is now {plan.title()}.")
                     else:
                         respond("You must downgrade to a plan lower than your current plan.")
             else:
@@ -161,9 +161,10 @@ def process_nltk(data):
         respond(f"It seems you have a {issue_type.lower()} issue. Could you please describe your issue in detail?")
         issue = get_input()
         ticket = generate_ticket()
-        db.request(Id, issue_type, issue, ticket)
-        respond(f"Thank you. Your {issue_type.lower()} issue has been logged. Your ticket number is {ticket}. Our team will get back to you soon.")
+        if db.request(Id, issue_type, issue, ticket):
+            respond(f"Thank you. Your {issue_type.lower()} issue has been logged. Your ticket number is {ticket}. Our team will get back to you soon.")
         return
+
     # 5.2. Request Cancellation
     if contains_any(data_lower, KEYWORDS["takeback"]):
         respond("Do you want to cancel your Complaint ? (yes/no)")
@@ -174,12 +175,13 @@ def process_nltk(data):
             found = True if ticket in db.tklist(Id) else False
             if found:
                 db.request_cancel(Id,ticket)
-                respond("Your request has been cancelled.")
+                respond(f"Your registered complaint regarding {db.issue(ticket)} issue has been cancelled.")
             else:
                 respond("Sorry, I couldn't find a complaint with that ticket number.")
         else:
             respond("Cancellation aborted. Let us know if you need anything else.")
         return
+
     # 6. Service Dissatisfaction / Escalation
     if contains_any(data_lower, KEYWORDS["dissatisfaction"]):
         respond("I'm sorry to hear that our service did not meet your expectations. Would you like to escalate this as a formal complaint or provide feedback?")
@@ -188,10 +190,12 @@ def process_nltk(data):
             respond("Please describe your complaint.")
             complaint = get_input()
             ticket = generate_ticket()
-            db.request(Id, "Complaint", complaint, ticket)
-            respond(f"Your complaint has been registered. Your ticket number is {ticket}.")
+            if db.request(Id, "Complaint", complaint, ticket):
+                respond(f"Your complaint has been registered. Your ticket number is {ticket}.")
+            else:
+                respond("Sorry, there was an error. It is either because you already have an active ticket.")
         elif contains_any(followup, KEYWORDS["feedback"]):
-            respond("Please share your feedback.")
+            respond("Please note that submitting feedback may indicate your issue has been resolved and your active complaint may be closed.")
             feedback = get_input()
             db.feedback(Id, feedback)
             respond("Thank you for your valuable feedback. We appreciate your input and will work to improve our service.")
@@ -214,9 +218,20 @@ def process_nltk(data):
             respond("Sorry, I couldn't find a complaint with that ticket number.")
         return
 
+    #7.2 Complaint filing
+    if contains_any(data_lower, KEYWORDS["complaint"]):
+            respond("Please describe your complaint.")
+            complaint = get_input()
+            ticket = generate_ticket()
+            if db.request(Id, "Complaint", complaint, ticket):
+                respond(f"Your complaint has been registered. Your ticket number is {ticket}.")
+            else:
+                respond("Sorry, there was an error. It is either because you already have an active ticket.")
+            return
+
     # 8. Feedback & Suggestions
     if contains_any(data_lower, KEYWORDS["feedback"]):
-        respond("We value your feedback. Please share your thoughts.")
+        respond("Please note that submitting feedback may indicate your issue has been resolved and your active complaint may be closed.")
         feedback = get_input()
         db.feedback(Id, feedback)
         respond("Thank you for your feedback. We appreciate your input!")
@@ -240,12 +255,11 @@ def process_nltk(data):
     respond("I'm sorry, I didn't quite understand. Could you please rephrase or specify if you need help, want to report an issue, request a service, or give feedback?")
 
 def main():
-    global username, plan, Id
-    username, plan, Id = login()
-    respond("Welcome to Customer Care! How may I assist you today?")
+    username, plan, Id = login(respondcli, get_inputcli)
+    respondcli("Welcome to Customer Care!    How may I assist you today?")
     while not close:
-        data = get_input()
-        process_nltk(data)
+        data = get_inputcli()
+        process_nltk(data,respondcli, get_inputcli,plan, Id)
 
 if __name__ == "__main__":
     main()
