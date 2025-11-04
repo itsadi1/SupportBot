@@ -27,7 +27,7 @@ This project provides a customer support chatbot with both a command-line interf
 
 The project is structured into the following Python files:
 
-* `supportbotgui.py`: Implements the graphical user interface using `tkinter`. It manages the display of chat messages, user input, and communicates with the bot's core logic via queues.
+* `main.py`: Implements the graphical user interface using `tkinter`. It manages the display of chat messages, user input, and communicates with the bot's core logic via queues.
 * `supportbot.py`: Contains the core NLP and conversational logic. It processes user input, identifies intents using keywords, and orchestrates interactions with the database. It also defines responses and manages the state of the conversation.
 * `supportbotdb.py`: Handles all database operations, connecting to MySQL, managing customer data, service plans, issues, complaints, and feedback. It includes functions for logging database interactions.
 * `logindb.py`:  This file handles user authentication and initial login procedures for the bot.
